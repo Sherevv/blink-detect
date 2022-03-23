@@ -6,17 +6,16 @@ import mediapipe as mp
 import numpy as np
 from playsound import playsound
 
-# Input an existing mp3 filename
-mp3File = "alarm.mp3"
-
 mp_face_detection = mp.solutions.face_detection
 mp_drawing = mp.solutions.drawing_utils
 mp_face_mesh = mp.solutions.face_mesh
 
+VIDEO_SOURCE = 0  # WebCam or video file, ex. 'file.mkv'
+
 WIDTH_CAM, HEIGHT_CAM = 640, 480
 
-LEFT_EYE = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398]
-RIGHT_EYE = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
+# Input an existing mp3 filename
+MP3_FILE = "alarm.mp3"
 
 # constants
 CLOSED_EYES_FRAME = 1
@@ -28,6 +27,9 @@ BLINK_PER_MINUTE_THRESHOLD = 24
 PLAYSOUND_DEBOUNCE = 4  # seconds
 
 PLAYSOUND_BLINK_TIME = 10  # seconds
+
+LEFT_EYE = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398]
+RIGHT_EYE = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
 
 
 def get_landmarks_mesh(img, results, draw=False):
@@ -86,13 +88,10 @@ def eye_extract(img, eye_coords):
     # drawing Eyes Shape on mask with white color
     cv.fillPoly(mask, [np.array(eye_coords, dtype=np.int32)], 255)
 
-    # showing the mask
-    # cv.imshow('mask', mask)
-
     # draw eyes image on mask, where white shape is
     eyes = cv.bitwise_and(gray, gray, mask=mask)
+
     # change black color to gray other than eys
-    # cv.imshow('eyes draw', eyes)
     eyes[mask == 0] = 155
 
     # getting minium and maximum x and y
@@ -101,7 +100,7 @@ def eye_extract(img, eye_coords):
     right = (max(eye_coords, key=lambda item: item[1]))[1]
     left = (min(eye_coords, key=lambda item: item[1]))[1]
 
-    # croping the eyes from mask
+    # cropping the eyes from mask
     cropped = eyes[left: right, bottom: top]
 
     # returning the cropped eye
@@ -141,13 +140,13 @@ def get_iris_points(landmark_point):
         landmark_point[477],
     ]
 
-    left_eye_info = calc_min_enc_losingCircle(left_eye_points)
-    right_eye_info = calc_min_enc_losingCircle(right_eye_points)
+    left_eye_info = calc_min_enc_losing_circle(left_eye_points)
+    right_eye_info = calc_min_enc_losing_circle(right_eye_points)
 
     return left_eye_info, right_eye_info
 
 
-def calc_min_enc_losingCircle(landmark_list):
+def calc_min_enc_losing_circle(landmark_list):
     center, radius = cv.minEnclosingCircle(np.array(landmark_list))
     center = (int(center[0]), int(center[1]))
     radius = int(radius)
@@ -160,7 +159,7 @@ def blink_detect():
     cef_counter = 0
     prev_time = 0
     blink_times = []
-    cap = cv.VideoCapture(0)
+    cap = cv.VideoCapture(VIDEO_SOURCE)
     cap.set(3, WIDTH_CAM)
     cap.set(4, HEIGHT_CAM)
     start_time = time.time()
@@ -190,17 +189,15 @@ def blink_detect():
             if results.multi_face_landmarks:
                 mesh_coords = get_landmarks_mesh(image, results, False)
                 ratio = blink_ratio(mesh_coords, RIGHT_EYE, LEFT_EYE)
-                # cv.putText(image, f'ratio {ratio}', (300, 20), cv.FONT_HERSHEY_PLAIN, 1.0, (0, 255, 0), 2)
 
                 if ratio > BLINK_RATIO_THRESHOLD:
                     cef_counter += 1
-                    # cv.putText(image, 'Blink', (300, 50), cv.FONT_HERSHEY_PLAIN, 1.3, (0, 255, 0), 2)
                 else:
                     if cef_counter > CLOSED_EYES_FRAME:
                         total_blinks += 1
                         cef_counter = 0
                         blink_times.append(time.time())
-                        print(total_blinks)
+                        # print(total_blinks)
                 draw_text(image, f'Blinks:{total_blinks}', pos=(20, 60))
 
                 cv.polylines(image, [np.array([mesh_coords[p] for p in LEFT_EYE], dtype=np.int32)], True, (0, 0, 255),
@@ -219,7 +216,7 @@ def blink_detect():
 
             diff_time = cur_time - start_time
             if diff_time < 60:  # if start app just now
-                bpm = 60 / diff_time * total_blinks
+                # bpm = 60 / diff_time * total_blinks
                 bpm = len(blink_times)
             else:
                 # Count blinks in last minute
@@ -231,12 +228,12 @@ def blink_detect():
                 draw_text(image, f'blink more often', pos=(20, HEIGHT_CAM - 60))
                 # Play sound
                 # if diff_time > 60 and cur_time - playsound_time > PLAYSOUND_DEBOUNCE:
-                #     playsound(mp3File, False)
+                #     playsound(MP3_FILE, False)
                 #     playsound_time = cur_time
             if blink_times \
                     and cur_time - blink_times[-1] > PLAYSOUND_BLINK_TIME \
                     and cur_time - playsound_time > PLAYSOUND_DEBOUNCE:
-                playsound(mp3File, False)
+                playsound(MP3_FILE, False)
                 playsound_time = cur_time
 
             draw_text(image, f'BPM:{str(int(bpm))}', pos=(20, 110))
@@ -244,7 +241,7 @@ def blink_detect():
 
             cv.imshow('MediaPipe Blink Detection', image)
 
-            if cv.waitKey(5) & 0xFF == ord('q'):
+            if cv.waitKey(10) & 0xFF == ord('q'):
                 break
     # Finally release back the camera resources
     cv.destroyAllWindows()
